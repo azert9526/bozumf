@@ -96,3 +96,9 @@ class Blocker {
         this.description = description;
     }
 }
+
+module.exports = {
+    fetchBlocker,
+    checkVideoExists,
+    addToDatabase
+};
