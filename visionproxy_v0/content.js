@@ -131,6 +131,17 @@ function getLuma(video) {
 // Procesam video si vedem intre doua frame-uri cum difera luma-ul
 function processVideo(video) {
     let lastLuma = -1;
+    let analysisActive = true;
+    let corsWorking = false;
+
+    // Test CORS access first
+    testVideoAccess(video).then((canAnalyze) => {
+        corsWorking = canAnalyze;
+        if (!canAnalyze) {
+            console.log("NeuroShield: CORS blocked for video, using limited analysis");
+            document.getElementById('cors-status').style.display = 'block';
+        }
+    });
 
     const onFrame = () => {
         if (!document.contains(video) || video.paused || video.ended) {
@@ -180,6 +191,15 @@ function processVideo(video) {
         video.requestVideoFrameCallback(onFrame);
     };
     video.requestVideoFrameCallback(onFrame);
+
+    // Cleanup if video is removed
+    const observer = new MutationObserver(() => {
+        if (!document.contains(video)) {
+            analysisActive = false;
+            observer.disconnect();
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // Init

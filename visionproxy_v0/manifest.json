@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "VisionProxy",
+  "name": "NeuroShield",
   "version": "1.0",
   "description": "AI-powered photosensitive protection.",
   "permissions": [
@@ -15,9 +15,9 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "css": ["styles.css"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end",
+      "all_frames": true
     }
   ]
 }
