@@ -1,0 +1,45 @@
+/* Asigurăm-ne că filtrul se aplică peste orice stil YouTube */
+video.neuroshield-active {
+    filter: grayscale(100%) brightness(50%) blur(15px) !important;
+    transition: filter 0.3s ease-out !important;
+}
+
+/* Overlay-ul AI care stă PESTE tot site-ul */
+#neuro-overlay-global {
+    position: fixed; /* Stă fix pe ecran, ignoră structura YouTube */
+    z-index: 2147483647; /* Valoarea MAXIMĂ posibilă în CSS */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(5px);
+    pointer-events: none; /* Lasă click-urile să treacă (poți da pauză la video) */
+    border: 3px solid red;
+    border-radius: 8px;
+    text-align: center;
+    padding: 20px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.ai-summary-box {
+    margin-top: 15px;
+    padding: 10px;
+    background: #222;
+    color: #fff;
+    border-radius: 5px;
+    font-family: sans-serif;
+    font-size: 14px;
+    max-width: 80%;
+    border-left: 4px solid #00ff00;
+}
+
+.warning-text {
+    color: red;
+    font-size: 24px;
+    font-weight: bold;
+    font-family: sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}

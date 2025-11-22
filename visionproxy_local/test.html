@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NeuroShield Valid Demo</title>
+    <style>
+        body { background: #111; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        video { border: 2px solid gray; width: 640px; height: 360px; background: black; }
+        button { font-size: 20px; padding: 10px 30px; cursor: pointer; margin: 10px; border:none; border-radius:5px; }
+        .btn-danger { background: #ff4444; color: white; }
+        .btn-safe { background: #44ff44; color: black; }
+    </style>
+</head>
+<body>
+    <h1>NeuroShield: Hackathon Logic Test</h1>
+    <p>Acest demo generează pixeli reali de flash video, detectabili de extensie.</p>
+
+    <video id="demoVideo" autoplay muted playsinline></video>
+    
+    <canvas id="generatorCanvas" width="640" height="360" style="display:none;"></canvas>
+
+    <br><br>
+    <button class="btn-safe" onclick="setMode('calm')">Mod Calm (Știri)</button>
+    <button class="btn-danger" onclick="setMode('strobe')">⚠️ Mod Stroboscop</button>
+
+    <script>
+        const canvas = document.getElementById('generatorCanvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('demoVideo');
+        
+        // Creăm un stream din canvas către video
+        const stream = canvas.captureStream(30); // 30 FPS
+        video.srcObject = stream;
+
+        let mode = 'calm';
+        let frameCount = 0;
+
+        function setMode(m) { mode = m; }
+
+        function loop() {
+            frameCount++;
+            
+            if (mode === 'calm') {
+                // Desenăm ceva calm (un gradient care se mișcă încet)
+                const grad = ctx.createLinearGradient(0, 0, 640, 0);
+                grad.addColorStop(0, '#333');
+                grad.addColorStop(1, `hsl(${frameCount % 360}, 50%, 50%)`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 640, 360);
+                
+                // Text
+                ctx.fillStyle = 'white';
+                ctx.font = '30px Arial';
+                ctx.fillText("Conținut Sigur (Luma stabilă)", 150, 180);
+            } 
+            else if (mode === 'strobe') {
+                // STROBOSCOP REAL: Schimbăm complet culoarea la fiecare 5 frame-uri
+                if (frameCount % 5 === 0) {
+                    ctx.fillStyle = frameCount % 10 === 0 ? 'white' : 'black';
+                    ctx.fillRect(0, 0, 640, 360);
+                }
+                
+                ctx.fillStyle = 'red';
+                ctx.font = 'bold 40px Arial';
+                ctx.fillText("⚠️ DANGER ⚠️", 200, 180);
+            }
+
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+</body>
+</html>

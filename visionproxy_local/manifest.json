@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "NeuroShield",
+  "version": "1.0",
+  "permissions": [
+    "declarativeNetRequest",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://*.googlevideo.com/*",
+    "https://*.youtube.com/*",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "cors_rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}
