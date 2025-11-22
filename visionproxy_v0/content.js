@@ -64,12 +64,14 @@ function updateOverlayPos(video) {
 
 async function checkDB(videoId) {
     try {
+        console.log(`${API_URL}/check?id=${videoId}`);
         const res = await fetch(`${API_URL}/check?id=${videoId}`);
+
         const data = await res.json();
         console.log(`DB Check for ${videoId}:`, data.found ? "Found" : "Not Found");
         return data; 
     } catch (e) {
-        console.log("Server offline. Using local analysis.");
+        console.log("Server offline. Using local analysis.", e);
         return { found: false };
     }
 }
@@ -229,8 +231,8 @@ function runRealtimeMode(video, activeId) {
                     if (currentBlockerStart !== null) {
                         const end = Math.floor(video.currentTime * 1000);
                         recordedBlockers.push({
-                            start_time_ms: Math.max(0, currentBlockerStart - 300),
-                            end_time_ms: end + 300,
+                            start_time_ms: Math.max(0, currentBlockerStart - 500),
+                            end_time_ms: end + 500,
                             description: "Auto-detected flash"
                         });
                         hasNewData = true;
@@ -260,12 +262,17 @@ function enableVideoCORS(video) {
     try { video.crossOrigin = "use-credentials"; } catch (e) {}
 }
 
+
 async function handleVideoChange(video) {
     // 1. Luăm ID-ul nou din URL
     const urlParams = new URLSearchParams(window.location.search);
     const newVideoId = urlParams.get('v');
 
-    if (!newVideoId) return; // Nu e video valid
+
+    if (!newVideoId) {
+        cleanupVisuals();
+        return;
+    } // Nu e video valid
 
     // 2. Dacă e același video pe care îl procesăm deja, nu facem nimic
     if (newVideoId === currentVideoId) return;
@@ -294,6 +301,8 @@ async function handleVideoChange(video) {
     }
 }
 
+
+
 // --- LOOP PRINCIPAL ---
 // Verificăm periodic dacă URL-ul s-a schimbat (Navigare YouTube)
 setInterval(() => {
@@ -310,4 +319,12 @@ setInterval(() => {
 // Backup: Salvare la închiderea tab-ului
 window.addEventListener('beforeunload', () => {
     saveToDB();
+    cleanupVisuals();
+    console.log("VisionProxy: Unloaded and data saved if any.");
+});
+
+// Oprire overlay la navigare inapoi/inainte
+window.addEventListener('popstate', () =>{
+    cleanupVisuals();
+    console.log("VisionProxy: Popstate");
 });

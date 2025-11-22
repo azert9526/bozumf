@@ -4,7 +4,7 @@ const pool  = new Pool({
     user: 'postgres',
     host: 'localhost',
     database: 'visionproxy',
-    password: 'postgres',
+    password: 'parolalaborator1234',
     port: 5432,
 });
 
