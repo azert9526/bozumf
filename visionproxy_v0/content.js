@@ -1,25 +1,24 @@
 // --- CONFIGURARE ---
-const API_URL = "http://localhost:8000"; 
+const API_URL = "http://localhost:8000";
 
-// Parametri Analiză
 const THRESHOLD = 40;
 const LUMA_DIFF_MIN = 5;
 const RISK_BUILD = 15;
 const RISK_DECAY = 5;
 
-// --- STARE ---
+// --- STARE GLOBALA ---
 let isPhotosensitiveMode = true;
 let isProtecting = false;
-let currentVideoId = null; // ID-ul video-ului curent activ
+let currentVideoId = null;
 
-// Stare pentru Inregistrare (Real-time)
-let recordedBlockers = []; 
+// Stare inregistrare
+let recordedBlockers = [];
 let currentBlockerStart = null;
 let hasNewData = false;
 
-console.log("VisionProxy: Client Loaded (Auto-Save Fixed)");
+console.log("VisionProxy: Client Loaded");
 
-// --- 1. UI SETUP ---
+// --- UI SETUP ---
 const overlay = document.createElement('div');
 overlay.id = 'vp-overlay';
 overlay.innerHTML = `
@@ -33,7 +32,7 @@ const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
 procCanvas.width = 32;
 procCanvas.height = 32;
 
-// --- 2. SYNC SETARI ---
+// --- SYNC SETARI ---
 chrome.storage.local.get({ isPhotosensitiveMode: true }, (items) => {
     isPhotosensitiveMode = items.isPhotosensitiveMode;
     if (!isPhotosensitiveMode) cleanupVisuals();
@@ -46,72 +45,115 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-function cleanupVisuals() {
-    overlay.style.opacity = '0';
-    document.querySelectorAll('video').forEach(v => v.classList.remove('vp-active'));
-}
-
-function updateOverlayPos(video) {
-    const rect = video.getBoundingClientRect();
-    if (rect.width === 0) return;
-    overlay.style.top = rect.top + 'px';
-    overlay.style.left = rect.left + 'px';
-    overlay.style.width = rect.width + 'px';
-    overlay.style.height = rect.height + 'px';
-}
-
-// --- 3. COMUNICARE CU SERVERUL ---
-
+// --- API CALLS DE LA SERVER ---
 async function checkDB(videoId) {
     try {
-        console.log(`${API_URL}/check?id=${videoId}`);
         const res = await fetch(`${API_URL}/check?id=${videoId}`);
-
-        const data = await res.json();
-        console.log(`DB Check for ${videoId}:`, data.found ? "Found" : "Not Found");
-        return data; 
-    } catch (e) {
-        console.log("Server offline. Using local analysis.", e);
+        return await res.json();
+    } catch {
         return { found: false };
     }
 }
 
-// Funcția CRITICĂ de salvare
 async function saveToDB() {
     if (!hasNewData || !currentVideoId || recordedBlockers.length === 0) return;
 
-    console.log(`💾 Saving ${recordedBlockers.length} blockers for video ${currentVideoId}...`);
-    
     const payload = JSON.stringify({
         video_id: currentVideoId,
         blockers: recordedBlockers
     });
 
     try {
-        // Folosim keepalive: true ca să nu moară requestul dacă se închide tabul
+        // Folosim keep alive pentru a trimite datele chiar daca se inchide tab-ul
         await fetch(`${API_URL}/add`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
-            keepalive: true 
+            keepalive: true
         });
-        
-        console.log("✅ Data saved successfully!");
-        // Resetăm starea după salvare
+
         hasNewData = false;
         recordedBlockers = [];
+        console.log("Data saved successfully.");
     } catch (e) {
-        console.error("❌ Save failed:", e);
+        console.error("Save failed:", e);
     }
 }
 
-// --- 4. MOD 1: PRE-COMPUTED (Din Baza de Date) ---
+// --- THUMBNAIL BADGES ---
+async function processThumbnail(thumbnail) {
+    const link = thumbnail.querySelector('a#thumbnail');
+    if (!link) return;
+
+    const href = link.getAttribute('href');
+    if (!href || !href.includes('watch?v=')) return;
+
+    const videoId = href.split('v=')[1].split('&')[0];
+
+    if (thumbnail.dataset.vpChecked) return;
+    thumbnail.dataset.vpChecked = "true";
+
+    addBadgeToThumbnail(thumbnail, "loading");
+    
+    // Verificam statusul (folosind aceeasi functie ca la video player)
+    const data = await checkDB(videoId);
+    
+    addBadgeToThumbnail(thumbnail, data.found ? "safe" : "unsafe");
+}
+
+function addBadgeToThumbnail(el, status) {
+    const old = el.querySelector('.vp-badge');
+    if (old) old.remove();
+
+    const badge = document.createElement('div');
+    badge.classList.add('vp-badge');
+
+    if (status === "safe") {
+        badge.textContent = "✅";
+        badge.classList.add('vp-badge-safe');
+    } else if (status === "loading") {
+        badge.textContent = "↻";
+        badge.style.background = "orange";
+    } else {
+        badge.textContent = "❌";
+        badge.classList.add('vp-badge-unknown');
+    }
+    el.appendChild(badge);
+}
+
+function scanThumbnails() {
+    document.querySelectorAll('ytd-thumbnail').forEach(t => {
+        if (!t.dataset.vpChecked) processThumbnail(t);
+    });
+}
+
+// --- HELPER VIZUALE ---
+function cleanupVisuals() {
+    fadeOverlay(0, 100);
+    document.querySelectorAll('video').forEach(v => v.classList.remove('vp-active'));
+}
+
+function updateOverlayPos(video) {
+    const r = video.getBoundingClientRect();
+    if (r.width === 0) return;
+    overlay.style.top = r.top + 'px';
+    overlay.style.left = r.left + 'px';
+    overlay.style.width = r.width + 'px';
+    overlay.style.height = r.height + 'px';
+}
+
+function fadeOverlay(toOpacity, duration = 500) {
+    overlay.style.transition = `opacity ${duration}ms ease`;
+    overlay.style.opacity = toOpacity;
+}
+
+// --- MOD 1: PRECOMPUTED (din DB) ---
 function runPrecomputedMode(video, blockers, activeId) {
-    console.log("MODE: Database (Blockers known)");
-    document.getElementById('vp-status').innerText = "Database Protection";
+    console.log("MODE: Precomputed");
+    document.getElementById('vp-status').innerText = "description";
 
     const loop = () => {
-        // Dacă s-a schimbat video-ul între timp, oprim bucla veche
+        // VERIFICARE CRITICA: Daca s-a schimbat video-ul, oprim bucla veche
         if (currentVideoId !== activeId) return;
 
         if (video.paused || video.ended) {
@@ -119,25 +161,23 @@ function runPrecomputedMode(video, blockers, activeId) {
             return;
         }
 
-        const nowMs = video.currentTime * 1000;
+        const now = video.currentTime * 1000;
         let shouldBlock = false;
 
         for (let b of blockers) {
-            // Support pentru ambele formate (DB vs Local)
             const start = b.start_time_ms || b.startTime;
             const end = b.end_time_ms || b.endTime;
-            
-            if (nowMs >= start && nowMs <= end) {
+            if (now >= start && now <= end) {
                 shouldBlock = true;
                 break;
             }
         }
 
         if (shouldBlock) {
-            if (isPhotosensitiveMode && !isProtecting) {
+            if (!isProtecting && isPhotosensitiveMode) {
                 isProtecting = true;
                 video.classList.add('vp-active');
-                overlay.style.opacity = '1';
+                fadeOverlay(1, 900);
                 updateOverlayPos(video);
             } else if (isProtecting) {
                 updateOverlayPos(video);
@@ -146,15 +186,16 @@ function runPrecomputedMode(video, blockers, activeId) {
             if (isProtecting) {
                 isProtecting = false;
                 video.classList.remove('vp-active');
-                overlay.style.opacity = '0';
+                fadeOverlay(0, 900);
             }
         }
         requestAnimationFrame(loop);
     };
+
     requestAnimationFrame(loop);
 }
 
-// --- 5. MOD 2: REAL-TIME (Analiză + Înregistrare) ---
+// --- MOD 2: REALTIME ---
 function getLuma(video) {
     try {
         ctx.drawImage(video, 0, 0, 32, 32);
@@ -164,22 +205,24 @@ function getLuma(video) {
             total += data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
         }
         return total / (data.length / 8);
-    } catch (e) { return -1; }
+    } catch {
+        return -1;
+    }
 }
 
 function runRealtimeMode(video, activeId) {
-    console.log("MODE: Real-Time Analysis");
-    document.getElementById('vp-status').innerText = "Analyzing Live...";
+    console.log("MODE: Realtime");
+    document.getElementById('vp-status').innerText = "Recording new data";
 
     let lastLuma = -1;
-    let riskLevel = 0;
+    let risk = 0;
 
-    // Resetăm buffer-ul local pentru noul video
+    // Reset la state
     recordedBlockers = [];
     hasNewData = false;
+    currentBlockerStart = null;
 
     const onFrame = () => {
-        // Dacă s-a schimbat video-ul, oprim bucla curentă
         if (currentVideoId !== activeId) return;
 
         if (!document.contains(video) || video.paused || video.ended) {
@@ -190,33 +233,30 @@ function runRealtimeMode(video, activeId) {
         if (isProtecting && isPhotosensitiveMode) updateOverlayPos(video);
 
         const curr = getLuma(video);
-        
+
         if (curr !== -1) {
-            let diff = 0;
-            if (lastLuma !== -1) diff = Math.abs(curr - lastLuma);
+            let diff = (lastLuma === -1) ? 0 : Math.abs(curr - lastLuma);
             lastLuma = curr;
 
             if (diff > LUMA_DIFF_MIN) {
-                riskLevel += (diff > 50) ? 50 : RISK_BUILD;
+                risk += (diff > 50) ? 50 : RISK_BUILD;
             } else {
-                riskLevel -= RISK_DECAY;
+                risk -= RISK_DECAY;
             }
-            riskLevel = Math.max(0, Math.min(100, riskLevel));
 
-            // --- TRIGGER ---
-            if (riskLevel > THRESHOLD) {
+            risk = Math.max(0, Math.min(100, risk));
+
+            if (risk > THRESHOLD) {
                 if (!isProtecting) {
                     isProtecting = true;
-                    
+
                     if (isPhotosensitiveMode) {
                         video.classList.add('vp-active');
-                        overlay.style.opacity = '1';
+                        fadeOverlay(1, 0);
                         updateOverlayPos(video);
                     }
-
-                    // Start Record
-                    currentBlockerStart = Math.floor(video.currentTime * 1000);
-                    currentBlockerStart = Math.max(0, currentBlockerStart - 200);
+                    // Start recording
+                    currentBlockerStart = Math.max(0, Math.floor(video.currentTime * 1000) - 200);
                 }
             } else {
                 if (isProtecting) {
@@ -224,107 +264,110 @@ function runRealtimeMode(video, activeId) {
 
                     if (isPhotosensitiveMode) {
                         video.classList.remove('vp-active');
-                        overlay.style.opacity = '0';
+                        fadeOverlay(0, 0);
                     }
 
-                    // End Record -> Save to RAM
+                    // Stop recording & save
                     if (currentBlockerStart !== null) {
                         const end = Math.floor(video.currentTime * 1000);
                         recordedBlockers.push({
-                            start_time_ms: Math.max(0, currentBlockerStart - 500),
-                            end_time_ms: end + 500,
-                            description: "Auto-detected flash"
+                            start_time_ms: Math.max(0, currentBlockerStart - 1000),
+                            end_time_ms: end + 1000,
+                            description: "Auto-detected flashes"
                         });
+                        
                         hasNewData = true;
                         currentBlockerStart = null;
-                        console.log("Captured Segment:", recordedBlockers[recordedBlockers.length-1]);
                     }
                 }
             }
         }
+
         video.requestVideoFrameCallback(onFrame);
     };
+
     video.requestVideoFrameCallback(onFrame);
 
-    // Ascultăm când se termină video-ul ca să salvăm
-    video.addEventListener('ended', () => {
-        if (currentVideoId === activeId) {
-            console.log("Video ended. Saving data...");
-            saveToDB();
-        }
+    // Salveaza datele cand video-ul se termina
+    video.addEventListener('ended', async () => {
+        if (currentVideoId === activeId) await saveToDB();
     }, { once: true });
 }
 
-// --- 6. INIT CONTROLLER (Logică de Navigare) ---
+// --- CONTROLLER & NAVIGARE ---
 
 function enableVideoCORS(video) {
-    if (video.crossOrigin) return;
-    try { video.crossOrigin = "use-credentials"; } catch (e) {}
+    if (!video.crossOrigin) {
+        try { video.crossOrigin = "use-credentials"; } catch {}
+    }
 }
-
 
 async function handleVideoChange(video) {
-    // 1. Luăm ID-ul nou din URL
     const urlParams = new URLSearchParams(window.location.search);
-    const newVideoId = urlParams.get('v');
+    const newId = urlParams.get('v');
 
+    // Daca nu avem ID ignoram
+    if (!newId) { cleanupVisuals(); return; }
 
-    if (!newVideoId) {
-        cleanupVisuals();
-        return;
-    } // Nu e video valid
+    // Daca ID-ul e acelasi, nu facem nimic (evitam restartarea buclei)
+    if (newId === currentVideoId) return;
 
-    // 2. Dacă e același video pe care îl procesăm deja, nu facem nimic
-    if (newVideoId === currentVideoId) return;
+    console.log(`Video Changed: ${currentVideoId} -> ${newId}`);
 
-    // 3. SCHIMBARE DE CONTEXT DETECTATĂ!
-    console.log(`🔄 Switching from ${currentVideoId} to ${newVideoId}`);
+    // 1. Salvam datele vechi inainte sa schimbam
+    if (currentVideoId && hasNewData) await saveToDB();
 
-    // 3a. Salvăm datele vechi (dacă există) înainte să schimbăm
-    if (currentVideoId && hasNewData) {
-        await saveToDB();
-    }
-
-    // 3b. Actualizăm ID-ul curent
-    currentVideoId = newVideoId;
-    
-    // 3c. Resetăm vizualul
+    // 2. Actualizam ID-ul curent
+    currentVideoId = newId;
     cleanupVisuals();
 
-    // 4. Verificăm baza de date pentru noul video
-    const dbData = await checkDB(newVideoId);
+    // 3. Verificam baza de date pentru noul video
+    const db = await checkDB(newId);
 
-    if (dbData.found && dbData.blockers && dbData.blockers.length > 0) {
-        runPrecomputedMode(video, dbData.blockers, newVideoId);
+    if (db.found && db.blockers && db.blockers.length > 0) {
+        runPrecomputedMode(video, db.blockers, newId);
     } else {
-        runRealtimeMode(video, newVideoId);
+        runRealtimeMode(video, newId);
     }
 }
 
-
-
 // --- LOOP PRINCIPAL ---
-// Verificăm periodic dacă URL-ul s-a schimbat (Navigare YouTube)
+// Folosim un interval pentru a verifica constant navigarea
 setInterval(() => {
+    // Scaneaza Thumbnails
+    scanThumbnails();
+
+    // Scaneaza Video Player
     document.querySelectorAll('video').forEach(v => {
-        // Activăm CORS mereu
         enableVideoCORS(v);
-        
-        // Verificăm dacă trebuie să schimbăm contextul
-        // (Funcția handleVideoChange verifică intern dacă ID-ul e diferit)
         handleVideoChange(v);
     });
 }, 250);
 
-// Backup: Salvare la închiderea tab-ului
+// --- OBSERVER (Doar pentru DOM Updates) ---
+const observer = new MutationObserver((mutations) => {
+    let shouldScan = false;
+    for (const m of mutations) {
+        if (m.addedNodes.length > 0) {
+            shouldScan = true;
+            break;
+        }
+    }
+    if (shouldScan) {
+        scanThumbnails();
+    }
+});
+observer.observe(document.body, { childList: true, subtree: true });
+
+// Salvare la inchidere tab
 window.addEventListener('beforeunload', () => {
     saveToDB();
     cleanupVisuals();
-    console.log("VisionProxy: Unloaded and data saved if any.");
 });
 
 // Oprire overlay la navigare inapoi/inainte
-window.addEventListener('popstate', () =>{
+window.addEventListener('popstate', () => {
     cleanupVisuals();
-    console.log("VisionProxy: Popstate");
 });
+
+// https://www.youtube.com/watch?v=nTejB1lAfPA

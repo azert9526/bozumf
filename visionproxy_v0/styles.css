@@ -1,10 +1,37 @@
-/* Clasa aplicată pe video când e pericol */
 video.vp-active {
     filter: grayscale(100%) brightness(50%) blur(10px) !important;
     transition: filter 0.1s ease-out !important;
 }
 
-/* Overlay-ul Global care stă peste video */
+.vp-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 999; /* Peste durata videoului */
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: Roboto, Arial, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    pointer-events: none; /* Click prin */
+}
+
+.vp-badge-safe {
+    background-color: #00cc00; /* Verde */
+    border: 1px solid #00ff00;
+}
+
+.vp-badge-unknown {
+    background-color: #662525; /* Rosu */
+    border: 1px solid #b83f3f;
+    opacity: 0.8;
+}
+
+
+
+/* Overlay-ul Global care sta peste video */
 #vp-overlay {
     position: fixed;
     z-index: 2147483647;
@@ -12,7 +39,7 @@ video.vp-active {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    /* ultima la background -> opacity la ecranul protective */
+    /* ultima la background -> opacity la ecranul protective TODO: */
     background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(5px);
     pointer-events: none;
