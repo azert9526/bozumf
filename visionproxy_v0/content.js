@@ -1,50 +1,82 @@
-// --- CONFIGURARE ---
-const API_KEY = "KEY"; // <--- PUNE CHEIA TA AICI
-const FLASH_THRESHOLD = 10; // Sensibilitate normală
-const INSTANT_KILL_THRESHOLD = 25; // Flash masiv care declanșează blocarea INSTANT
-const RISK_BUILD = 6; // Creștere normală
-const RISK_DECAY = 3; // Scădere când e calm
+// Config
+// const API_KEY = "PUNE_AICI_CHEIA"; // <--- CHEIA TA AICI
 
-console.log("NeuroShield: Zero-Latency Engine Loaded");
+// Setari interne
+const LUMA_MIN_DIFFERENCE = 5;
+const RISK_BUILD = 15;
+const RISK_DECAY = 5;
+const THRESHOLD = 40;
 
-// --- SETUP UI (Overlay & Canvas) ---
-const overlay = document.createElement('div');
-overlay.id = 'neuro-overlay-global';
-overlay.innerHTML = `
-    <div class="warning-text">RISK BLOCKED</div>
-    <div id="ai-loading" style="color:gray; margin-top:10px;">Analyzing Scene...</div>
-    <div id="ai-result" class="ai-summary-box" style="display:none;"></div>
-`;
-document.body.appendChild(overlay);
-
-// Canvas pentru procesare (micșorat pentru viteză)
-const procCanvas = document.createElement('canvas');
-const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
-procCanvas.width = 32;
-procCanvas.height = 32;
-
+// Stare
+let isPhotosensitiveMode = true; // Din setari
 let riskLevel = 0;
 let isProtecting = false;
 let lastSummaryTime = 0;
 
-// --- AI SUMMARY (Neschimbat) ---
-async function generateAISummary(videoElement) {
+console.log("VisionProxy: Running");
+
+// UI SETUP
+const overlay = document.createElement('div');
+overlay.id = 'vp-overlay';
+overlay.innerHTML = `
+    <div class="vp-warning">VisionProxy Active</div>
+    <div id="vp-loading" style="color:gray; margin-top:10px;">Analyzing scene...</div>
+    <div id="vp-result" class="vp-ai-box" style="display:none;"></div>
+`;
+document.body.appendChild(overlay);
+
+// Canvas Procesare
+const procCanvas = document.createElement('canvas');
+const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
+procCanvas.width = 32;
+procCanvas.height = 32;
+
+
+// Sync Setari
+chrome.storage.local.get({ isPhotosensitiveMode: true }, (items) => {
+    isPhotosensitiveMode = items.isPhotosensitiveMode;
+    if (!isPhotosensitiveMode) cleanupProtection();
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.isPhotosensitiveMode) {
+        isPhotosensitiveMode = changes.isPhotosensitiveMode.newValue;
+        console.log("Mod Fotosensibil schimbat:", isPhotosensitiveMode);
+
+        if (!isPhotosensitiveMode) {
+            cleanupProtection();
+        }
+    }
+});
+
+function cleanupProtection() {
+    isProtecting = false;
+    // Lasam extensia sa mearga dar fara ecran protector
+    overlay.style.opacity = '0';
+    document.querySelectorAll('video').forEach(v => v.classList.remove('vp-active'));
+}
+
+
+// --- FUNCȚII CORE ---
+
+/*
+async function getAISummary(video) {
+    // Facem cererea doar dacă modul e activ, altfel nu are sens să consumăm API
+    if (!isPhotosensitiveMode) return;
+
     const now = Date.now();
     if (now - lastSummaryTime < 15000) return;
     lastSummaryTime = now;
 
-    // Captură High-Res pentru AI
-    const aiCanvas = document.createElement('canvas');
-    aiCanvas.width = 300;
-    aiCanvas.height = 200;
-    try {
-        aiCanvas.getContext('2d').drawImage(videoElement, 0, 0, 300, 200);
-    } catch (e) { return; }
+    const capCanvas = document.createElement('canvas');
+    capCanvas.width = 300;
+    capCanvas.height = 200;
+    try { capCanvas.getContext('2d').drawImage(video, 0, 0, 300, 200); } catch (e) { return; }
 
-    const base64Image = aiCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+    const base64 = capCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 
     try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -52,138 +84,111 @@ async function generateAISummary(videoElement) {
             },
             body: JSON.stringify({
                 model: "gpt-4o-mini",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Describe scene in 1 sentence for blind person. Ignore flashes." },
-                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                        ]
-                    }
-                ],
+                messages: [{
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Describe scene in 1 short sentence for blind person. Ignore flashes." },
+                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } }
+                    ]
+                }],
                 max_tokens: 40
             })
         });
-        const data = await response.json();
+        const data = await res.json();
         if (data.choices) {
-            const description = data.choices[0].message.content;
-            document.getElementById('ai-loading').style.display = 'none';
-            document.getElementById('ai-result').style.display = 'block';
-            document.getElementById('ai-result').innerText = description;
+            document.getElementById('vp-loading').style.display = 'none';
+            document.getElementById('vp-result').style.display = 'block';
+            document.getElementById('vp-result').innerText = data.choices[0].message.content;
         }
-    } catch (error) { console.error(error); }
+    } catch (e) { console.error(e); }
 }
+*/
 
-// --- POZIȚIONARE OVERLAY ---
-function updateOverlayPosition(video) {
-    if (!isProtecting) return;
+// Putem obtine exact coordonatele elementului video
+function updateOverlayPos(video) {
     const rect = video.getBoundingClientRect();
-    if (rect.width === 0) { overlay.style.opacity = '0'; return; }
+    if (rect.width === 0) return;
 
     overlay.style.top = rect.top + 'px';
     overlay.style.left = rect.left + 'px';
     overlay.style.width = rect.width + 'px';
     overlay.style.height = rect.height + 'px';
-    overlay.style.opacity = '1';
 }
 
-// --- ANALIZA LUMINANȚEI ---
+// Practic o functie care calculeaza cat de luminoase sunt frame-urile fata
 function getLuma(video) {
     try {
-        // Desenăm frame-ul curent
-        procCtx.drawImage(video, 0, 0, 32, 32);
-        const frame = procCtx.getImageData(0, 0, 32, 32).data;
+        ctx.drawImage(video, 0, 0, 32, 32);
+        const data = ctx.getImageData(0, 0, 32, 32).data;
         let total = 0;
-        let count = 0;
-
-        // Sampling optimizat (sărim pixeli pentru viteză la 60fps)
-        for (let i = 0; i < frame.length; i += 16) {
-            total += frame[i] * 0.299 + frame[i + 1] * 0.587 + frame[i + 2] * 0.114;
-            count++;
+        for (let i = 0; i < data.length; i += 8) {
+            total += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
         }
-        return total / count;
+        return total / (data.length / 8);
     } catch (e) { return -1; }
 }
 
-// --- ENGINE-UL ZERO-LATENCY ---
-function startAnalysis(video) {
+// Procesam video si vedem intre doua frame-uri cum difera luma-ul
+function processVideo(video) {
     let lastLuma = -1;
 
-    // Folosim requestVideoFrameCallback în loc de setInterval
-    // Aceasta se execută FIECARE FRAME, exact când e gata de randare.
-    const onFrame = (now, metadata) => {
+    const onFrame = () => {
         if (!document.contains(video) || video.paused || video.ended) {
-            // Dacă video-ul s-a oprit, re-verificăm peste 1 secundă
-            // (nu putem folosi RVFC pe video oprit)
-            setTimeout(() => video.requestVideoFrameCallback(onFrame), 1000);
+            setTimeout(() => video.requestVideoFrameCallback(onFrame), 500);
             return;
         }
 
-        if (isProtecting) updateOverlayPosition(video);
+        if (isProtecting && isPhotosensitiveMode) updateOverlayPos(video);
 
-        const currLuma = getLuma(video);
-
-        if (currLuma !== -1) {
+        const curr = getLuma(video);
+        if (curr !== -1) {
             let diff = 0;
-            if (lastLuma !== -1) diff = Math.abs(currLuma - lastLuma);
-            lastLuma = currLuma;
+            if (lastLuma !== -1) diff = Math.abs(curr - lastLuma);
+            lastLuma = curr;
 
-            // --- LOGICA "INSTANT KILL" ---
-            if (diff > INSTANT_KILL_THRESHOLD) {
-                // Flash MASIV detectat -> Blocăm instant, nu așteptăm acumularea
-                riskLevel = 100;
-            }
-            else if (diff > FLASH_THRESHOLD) {
-                // Flash mediu -> Acumulăm risc
+            // Permanent calculam riscul sa putem actualiza baza de date
+            if (diff > LUMA_MIN_DIFFERENCE) {
                 riskLevel += RISK_BUILD;
-            }
-            else {
-                // Calm -> Scădem risc
+            } else {
                 riskLevel -= RISK_DECAY;
             }
-
-            // Limite
             riskLevel = Math.max(0, Math.min(100, riskLevel));
 
-            // --- TRIGGER ---
-            if (riskLevel > 50) {
-                if (!isProtecting) {
-                    isProtecting = true;
-                    video.classList.add('neuroshield-active');
-                    updateOverlayPosition(video);
+            // Daca e modul activ punem protectia
+            if (riskLevel > THRESHOLD) {
+                if (isPhotosensitiveMode) {
+                    if (!isProtecting) {
+                        isProtecting = true;
 
-                    // UI Reset
-                    document.getElementById('ai-loading').style.display = 'block';
-                    document.getElementById('ai-result').style.display = 'none';
+                        video.classList.add('vp-active');
+                        overlay.style.opacity = '1';
+                        updateOverlayPos(video);
 
-                    //generateAISummary(video);
+                        // Reset UI
+                        document.getElementById('vp-loading').style.display = 'block';
+                        document.getElementById('vp-result').style.display = 'none';
+                        // getAISummary(video);
+                    }
+                } else {
+                    if (isProtecting) cleanupProtection();
                 }
             } else {
-                if (isProtecting) {
-                    isProtecting = false;
-                    video.classList.remove('neuroshield-active');
-                    overlay.style.opacity = '0';
-                }
+                // Riscul deja a scazut sub Threshold
+                if (isProtecting) cleanupProtection();
             }
         }
-
-        // Cerem următorul frame
         video.requestVideoFrameCallback(onFrame);
     };
-
-    // Pornim bucla
     video.requestVideoFrameCallback(onFrame);
 }
 
-// --- INIȚIALIZARE ---
-// Verificăm periodic pentru videouri noi
+// Init
 setInterval(() => {
     document.querySelectorAll('video').forEach(v => {
-        if (!v.dataset.nsActive) {
-            v.dataset.nsActive = "true";
+        if (!v.dataset.vpHook) {
+            v.dataset.vpHook = "true";
             try { v.crossOrigin = "anonymous"; } catch (e) { }
-            console.log("NeuroShield: Hooked video", v);
-            startAnalysis(v);
+            processVideo(v);
         }
     });
-}, 2000);
+}, 500);
