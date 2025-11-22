@@ -51,7 +51,29 @@ async function addToDatabase(videoURL, blockers) {
         else throw new Error("Could not insert video");
     } catch (error) {
         console.error(error);
+        throw error;
 
+    } finally {
+        if (client) client.release();
+    }
+}
+
+async function checkVideoExists(videoURL) {
+    const params = await processVideoURL(videoURL);
+    const queryForVideoID = "SELECT id FROM Video WHERE platform = $1 AND video_id = $2";
+
+    let client = await pool.connection();
+
+    try {
+        const result = await client.query(queryForVideoID, [params.platform, params.video_id]);
+        if(result.rows.length > 0) {
+            if(client) client.release();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error(error);
+        throw error;
     } finally {
         if (client) client.release();
     }
