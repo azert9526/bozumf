@@ -60,21 +60,38 @@ async function saveToDB() {
 
     const payload = JSON.stringify({
         video_id: currentVideoId,
+        platform: 'youtube', // momentan doar youtube
         blockers: recordedBlockers
     });
 
     try {
         // Folosim keep alive pentru a trimite datele chiar daca se inchide tab-ul
-        await fetch(`${API_URL}/add`, {
+        const addResponse = await fetch(`${API_URL}/add`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
             keepalive: true
         });
 
+        if (!addResponse.ok) {
+            console.error("Save failed: server said ", addResponse.status);
+            return;
+        }
+
+        fetch(`${API_URL}/generate-descriptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                video_id: currentVideoId,
+                platform: 'youtube'
+            }),
+            keepalive: true
+        }).catch(err => console.error("Warning generating descriptions:", err));
+
         hasNewData = false;
         recordedBlockers = [];
-        console.log("Data saved successfully.");
+
+        console.log("Data saved successfully");
     } catch (e) {
         console.error("Save failed:", e);
     }
