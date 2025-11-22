@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "VisionProxy",
+  "version": "1.0",
+  "description": "Real-time protection with visual analysis.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["styles.css"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "VisionProxy Active"
+  }
+}
