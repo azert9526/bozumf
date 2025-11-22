@@ -2,11 +2,16 @@
   "manifest_version": 3,
   "name": "VisionProxy",
   "version": "1.0",
-  "description": "Real-time protection with visual analysis.",
+  "description": "AI-powered photosensitive protection.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "VisionProxy Settings"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -14,8 +19,5 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ],
-  "action": {
-    "default_title": "VisionProxy Active"
-  }
+  ]
 }
