@@ -262,13 +262,17 @@ function enableVideoCORS(video) {
     try { video.crossOrigin = "use-credentials"; } catch (e) {}
 }
 
+
 async function handleVideoChange(video) {
     // 1. Luăm ID-ul nou din URL
     const urlParams = new URLSearchParams(window.location.search);
     const newVideoId = urlParams.get('v');
 
 
-    if (!newVideoId) return; // Nu e video valid
+    if (!newVideoId) {
+        cleanupVisuals();
+        return;
+    } // Nu e video valid
 
     // 2. Dacă e același video pe care îl procesăm deja, nu facem nimic
     if (newVideoId === currentVideoId) return;
@@ -319,6 +323,7 @@ window.addEventListener('beforeunload', () => {
     console.log("VisionProxy: Unloaded and data saved if any.");
 });
 
+// Oprire overlay la navigare inapoi/inainte
 window.addEventListener('popstate', () =>{
     cleanupVisuals();
     console.log("VisionProxy: Popstate");
