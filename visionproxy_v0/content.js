@@ -1,135 +1,135 @@
-// content.js - Updated for CORS with credentials
-const API_KEY = "KEY";
-const FLASH_THRESHOLD = 10;
-const INSTANT_KILL_THRESHOLD = 25;
-const RISK_BUILD = 6;
-const RISK_DECAY = 3;
+// Config
+// const API_KEY = "PUNE_AICI_CHEIA"; // <--- CHEIA TA AICI
 
-console.log("NeuroShield Extension: Zero-Latency Engine Loaded");
+// Setari interne
+const LUMA_MIN_DIFFERENCE = 5;
+const RISK_BUILD = 15;
+const RISK_DECAY = 5;
+const THRESHOLD = 40;
 
-// Setup UI
-const overlay = document.createElement('div');
-overlay.id = 'neuro-overlay-global';
-overlay.style.cssText = `
-    position: fixed;
-    background: rgba(0, 0, 0, 0.9);
-    color: white;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 10000;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s;
-`;
-overlay.innerHTML = `
-    <div style="font-size: 48px; font-weight: bold; color: #ff4444; margin-bottom: 20px;">RISK BLOCKED</div>
-    <div id="ai-loading" style="color: #ccc; margin: 10px 0;">Analyzing Scene...</div>
-    <div id="ai-result" style="display:none; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; max-width: 300px; text-align: center;"></div>
-    <div id="cors-status" style="color: orange; display: none; margin-top: 10px;">
-        ⚠️ Limited analysis (CORS restrictions)
-    </div>
-`;
-document.body.appendChild(overlay);
-
-// Canvas for processing
-const procCanvas = document.createElement('canvas');
-const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
-procCanvas.width = 32;
-procCanvas.height = 32;
-
+// Stare
+let isPhotosensitiveMode = true; // Din setari
 let riskLevel = 0;
 let isProtecting = false;
 let lastSummaryTime = 0;
 
-// Enhanced CORS handling
-function enableVideoCORS(video) {
-    if (video.src && !video.crossOrigin) {
-        // Try different CORS modes
-        try {
-            // First try without credentials
-            video.crossOrigin = "anonymous";
-            console.log("NeuroShield: Set CORS anonymous on video");
-        } catch (e) {
-            console.log("NeuroShield: Failed to set CORS anonymous");
+console.log("VisionProxy: Running");
+
+// UI SETUP
+const overlay = document.createElement('div');
+overlay.id = 'vp-overlay';
+overlay.innerHTML = `
+    <div class="vp-warning">VisionProxy Active</div>
+    <div id="vp-loading" style="color:gray; margin-top:10px;">Analyzing scene...</div>
+    <div id="vp-result" class="vp-ai-box" style="display:none;"></div>
+`;
+document.body.appendChild(overlay);
+
+// Canvas Procesare
+const procCanvas = document.createElement('canvas');
+const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
+procCanvas.width = 32;
+procCanvas.height = 32;
+
+
+// Sync Setari
+chrome.storage.local.get({ isPhotosensitiveMode: true }, (items) => {
+    isPhotosensitiveMode = items.isPhotosensitiveMode;
+    if (!isPhotosensitiveMode) cleanupProtection();
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+    if (changes.isPhotosensitiveMode) {
+        isPhotosensitiveMode = changes.isPhotosensitiveMode.newValue;
+        console.log("Mod Fotosensibil schimbat:", isPhotosensitiveMode);
+
+        if (!isPhotosensitiveMode) {
+            cleanupProtection();
         }
     }
+});
+
+function cleanupProtection() {
+    isProtecting = false;
+    // Lasam extensia sa mearga dar fara ecran protector
+    overlay.style.opacity = '0';
+    document.querySelectorAll('video').forEach(v => v.classList.remove('vp-active'));
 }
 
-// Test if we can actually analyze the video
-function testVideoAccess(video) {
-    return new Promise((resolve) => {
-        try {
-            procCtx.drawImage(video, 0, 0, 1, 1);
-            procCtx.getImageData(0, 0, 1, 1);
-            resolve(true);
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
 
-// Analysis function with fallback
-function getLuma(video) {
+// --- FUNCȚII CORE ---
+
+/*
+async function getAISummary(video) {
+    // Facem cererea doar dacă modul e activ, altfel nu are sens să consumăm API
+    if (!isPhotosensitiveMode) return;
+
+    const now = Date.now();
+    if (now - lastSummaryTime < 15000) return;
+    lastSummaryTime = now;
+
+    const capCanvas = document.createElement('canvas');
+    capCanvas.width = 300;
+    capCanvas.height = 200;
+    try { capCanvas.getContext('2d').drawImage(video, 0, 0, 300, 200); } catch (e) { return; }
+
+    const base64 = capCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+
     try {
-        procCtx.drawImage(video, 0, 0, 32, 32);
-        const frame = procCtx.getImageData(0, 0, 32, 32).data;
-        let total = 0;
-        let count = 0;
-
-        for (let i = 0; i < frame.length; i += 16) {
-            total += frame[i] * 0.299 + frame[i + 1] * 0.587 + frame[i + 2] * 0.114;
-            count++;
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [{
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Describe scene in 1 short sentence for blind person. Ignore flashes." },
+                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } }
+                    ]
+                }],
+                max_tokens: 40
+            })
+        });
+        const data = await res.json();
+        if (data.choices) {
+            document.getElementById('vp-loading').style.display = 'none';
+            document.getElementById('vp-result').style.display = 'block';
+            document.getElementById('vp-result').innerText = data.choices[0].message.content;
         }
-
-        // Hide CORS status if analysis works
-        document.getElementById('cors-status').style.display = 'none';
-        return total / count;
-
-    } catch (e) {
-        if (e.name === 'SecurityError') {
-            console.log("NeuroShield: CORS still blocked, using fallback analysis");
-            document.getElementById('cors-status').style.display = 'block';
-
-            // Fallback: Use timing-based detection when CORS fails
-            return getLumaFallback(video);
-        }
-        return -1;
-    }
+    } catch (e) { console.error(e); }
 }
+*/
 
-// Fallback analysis when CORS is completely blocked
-function getLumaFallback(video) {
-    // Method 1: Check video state and dimensions
-    if (video.paused || video.ended || video.readyState < 2) return 128;
-
-    // Method 2: Use video time changes as proxy for activity
-    const currentTime = video.currentTime;
-
-    // Return a safe middle value since we can't analyze pixels
-    // This will prevent false positives but won't detect actual flashes
-    return 128;
-}
-
-// Overlay positioning
-function updateOverlayPosition(video) {
-    if (!isProtecting) return;
+// Putem obtine exact coordonatele elementului video
+function updateOverlayPos(video) {
     const rect = video.getBoundingClientRect();
-    if (rect.width === 0) {
-        overlay.style.opacity = '0';
-        return;
-    }
+    if (rect.width === 0) return;
 
     overlay.style.top = rect.top + 'px';
     overlay.style.left = rect.left + 'px';
     overlay.style.width = rect.width + 'px';
     overlay.style.height = rect.height + 'px';
-    overlay.style.opacity = '1';
 }
 
-// Main analysis engine
-function startAnalysis(video) {
+// Practic o functie care calculeaza cat de luminoase sunt frame-urile fata
+function getLuma(video) {
+    try {
+        ctx.drawImage(video, 0, 0, 32, 32);
+        const data = ctx.getImageData(0, 0, 32, 32).data;
+        let total = 0;
+        for (let i = 0; i < data.length; i += 8) {
+            total += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        }
+        return total / (data.length / 8);
+    } catch (e) { return -1; }
+}
+
+// Procesam video si vedem intre doua frame-uri cum difera luma-ul
+function processVideo(video) {
     let lastLuma = -1;
     let analysisActive = true;
     let corsWorking = false;
@@ -143,59 +143,53 @@ function startAnalysis(video) {
         }
     });
 
-    const onFrame = (now, metadata) => {
-        if (!analysisActive || !document.contains(video) || video.paused || video.ended) {
-            if (!video.paused && !video.ended) {
-                setTimeout(() => video.requestVideoFrameCallback(onFrame), 1000);
-            }
+    const onFrame = () => {
+        if (!document.contains(video) || video.paused || video.ended) {
+            setTimeout(() => video.requestVideoFrameCallback(onFrame), 500);
             return;
         }
 
-        if (isProtecting) updateOverlayPosition(video);
+        if (isProtecting && isPhotosensitiveMode) updateOverlayPos(video);
 
-        const currLuma = getLuma(video);
-
-        if (currLuma !== -1) {
+        const curr = getLuma(video);
+        if (curr !== -1) {
             let diff = 0;
-            if (lastLuma !== -1) diff = Math.abs(currLuma - lastLuma);
-            lastLuma = currLuma;
+            if (lastLuma !== -1) diff = Math.abs(curr - lastLuma);
+            lastLuma = curr;
 
-            // Adjust sensitivity based on CORS capability
-            const effectiveThreshold = corsWorking ? FLASH_THRESHOLD : FLASH_THRESHOLD * 3;
-            const effectiveInstantKill = corsWorking ? INSTANT_KILL_THRESHOLD : INSTANT_KILL_THRESHOLD * 3;
-
-            if (diff > effectiveInstantKill) {
-                riskLevel = 100;
-            } else if (diff > effectiveThreshold) {
+            // Permanent calculam riscul sa putem actualiza baza de date
+            if (diff > LUMA_MIN_DIFFERENCE) {
                 riskLevel += RISK_BUILD;
             } else {
                 riskLevel -= RISK_DECAY;
             }
-
             riskLevel = Math.max(0, Math.min(100, riskLevel));
 
-            if (riskLevel > 10) {
-                if (!isProtecting) {
-                    isProtecting = true;
-                    video.style.filter = 'blur(10px)';
-                    updateOverlayPosition(video);
-                    document.getElementById('ai-loading').style.display = 'block';
-                    document.getElementById('ai-result').style.display = 'none';
-                    console.log("NeuroShield: Protection activated");
+            // Daca e modul activ punem protectia
+            if (riskLevel > THRESHOLD) {
+                if (isPhotosensitiveMode) {
+                    if (!isProtecting) {
+                        isProtecting = true;
+
+                        video.classList.add('vp-active');
+                        overlay.style.opacity = '1';
+                        updateOverlayPos(video);
+
+                        // Reset UI
+                        document.getElementById('vp-loading').style.display = 'block';
+                        document.getElementById('vp-result').style.display = 'none';
+                        // getAISummary(video);
+                    }
+                } else {
+                    if (isProtecting) cleanupProtection();
                 }
             } else {
-                if (isProtecting) {
-                    isProtecting = false;
-                    video.style.filter = 'none';
-                    overlay.style.opacity = '0';
-                    console.log("NeuroShield: Protection deactivated");
-                }
+                // Riscul deja a scazut sub Threshold
+                if (isProtecting) cleanupProtection();
             }
         }
-
         video.requestVideoFrameCallback(onFrame);
     };
-
     video.requestVideoFrameCallback(onFrame);
 
     // Cleanup if video is removed
@@ -208,53 +202,13 @@ function startAnalysis(video) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// Initialize - hook all videos
-function initializeVideoAnalysis() {
+// Init
+setInterval(() => {
     document.querySelectorAll('video').forEach(v => {
-        if (!v.dataset.nsActive) {
-            v.dataset.nsActive = "true";
-            enableVideoCORS(v);
-            console.log("NeuroShield: Hooked video", v.src);
-            startAnalysis(v);
+        if (!v.dataset.vpHook) {
+            v.dataset.vpHook = "true";
+            try { v.crossOrigin = "anonymous"; } catch (e) { }
+            processVideo(v);
         }
     });
-}
-
-// Initial scan
-initializeVideoAnalysis();
-
-// Watch for new videos
-const videoObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-            if (node.nodeName === 'VIDEO') {
-                setTimeout(() => {
-                    if (!node.dataset.nsActive) {
-                        node.dataset.nsActive = "true";
-                        enableVideoCORS(node);
-                        console.log("NeuroShield: Hooked new video", node.src);
-                        startAnalysis(node);
-                    }
-                }, 100);
-            } else if (node.querySelectorAll) {
-                node.querySelectorAll('video').forEach(video => {
-                    setTimeout(() => {
-                        if (!video.dataset.nsActive) {
-                            video.dataset.nsActive = "true";
-                            enableVideoCORS(video);
-                            console.log("NeuroShield: Hooked nested video", video.src);
-                            startAnalysis(video);
-                        }
-                    }, 100);
-                });
-            }
-        });
-    });
-});
-
-videoObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-});
-
-console.log("NeuroShield: Video observer started");
+}, 500);
