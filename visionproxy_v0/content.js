@@ -150,7 +150,8 @@ function fadeOverlay(toOpacity, duration = 500) {
 // --- MOD 1: PRECOMPUTED (din DB) ---
 function runPrecomputedMode(video, blockers, activeId) {
     console.log("MODE: Precomputed");
-    document.getElementById('vp-status').innerText = "description";
+    document.getElementById('vp-status').innerText = "Hidden part is too short for a description";
+    // daca are in Db description, inlocuim
 
     const loop = () => {
         // VERIFICARE CRITICA: Daca s-a schimbat video-ul, oprim bucla veche
