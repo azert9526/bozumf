@@ -30,6 +30,33 @@ async function fetchBlocker(videoURL) {
     }
 }
 
+async function addToDatabase(videoURL, blockers) {
+    let client;
+    try {
+        const params = await processVideoURL(videoURL);
+        const queryToAddVideo = "INSERT INTO Video (platform, video_id) VALUES ($1, $2) RETURNING id";
+
+        client = await pool.connect();
+        const result = await client.query(queryToAddVideo, [params.platform, params.video_id]);
+        if(result.rows.length > 0) {
+            const video_id = result.rows[0].id;
+            const queryToAddBlocker =
+                "INSERT INTO Blocker (video_id, start_time_ms, end_time_ms, description) VALUES ($1, $2, $3, $4)";
+
+            for(const blocker of result.rows) {
+                await client.query(queryToAddBlocker, [video_id, blocker.start_time_ms, blocker.end_time_ms, blocker.description]);
+            }
+
+        }
+        else throw new Error("Could not insert video");
+    } catch (error) {
+        console.error(error);
+
+    } finally {
+        if (client) client.release();
+    }
+}
+
 async function processVideoURL(videoURL) {
     if (videoURL.includes('youtube')) {
         platform = 'youtube';
