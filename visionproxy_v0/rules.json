@@ -13,7 +13,7 @@
         {
           "header": "Access-Control-Allow-Methods",
           "operation": "set",
-          "value": "GET, HEAD, OPTIONS"
+          "value": "GET, HEAD, OPTIONS, POST"
         },
         {
           "header": "Access-Control-Allow-Credentials",
@@ -28,7 +28,7 @@
       ]
     },
     "condition": {
-      "urlFilter": "||googlevideo.com/videoplayback",
+      "urlFilter": "||googlevideo.com",
       "resourceTypes": ["media", "xmlhttprequest", "other"]
     }
   }
