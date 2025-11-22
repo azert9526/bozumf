@@ -12,7 +12,8 @@ video.vp-active {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.95);
+    /* ultima la background -> opacity la ecranul protective */
+    background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(5px);
     pointer-events: none;
     border: 3px solid #00ff88;

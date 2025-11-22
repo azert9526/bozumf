@@ -1,14 +1,15 @@
 CREATE TABLE Video (
     id SERIAL PRIMARY KEY,
-    video_id VARCHAR(100) NOT NULL UNIQUE,
-    platform VARCHAR(100) NOT NULL DEFAULT 'youtube'
+    video_id VARCHAR(255) NOT NULL UNIQUE,
+    platform VARCHAR(255) NOT NULL DEFAULT 'youtube',
+    UNIQUE(platform, video_id)
 );
 
 CREATE TABLE Blocker (
     id SERIAL PRIMARY KEY,
-    start_time_ms BIGINT NOT NULL,
-    end_time_ms BIGINT NOT NULL,
+    video_id INTEGER REFERENCES Video(id) ON DELETE CASCADE,
+    start_time_ms INTEGER NOT NULL,
+    end_time_ms INTEGER NOT NULL,
     description TEXT,
-    video_id INTEGER NOT NULL REFERENCES Video(id),
     CONSTRAINT time_order CHECK (end_time_ms > start_time_ms)
 );
