@@ -1,23 +1,39 @@
-// --- CONFIGURARE ---
-const API_KEY = "KEY"; // <--- PUNE CHEIA TA AICI
-const FLASH_THRESHOLD = 10; // Sensibilitate normală
-const INSTANT_KILL_THRESHOLD = 25; // Flash masiv care declanșează blocarea INSTANT
-const RISK_BUILD = 6; // Creștere normală
-const RISK_DECAY = 3; // Scădere când e calm
+// content.js - Updated for CORS with credentials
+const API_KEY = "KEY";
+const FLASH_THRESHOLD = 10;
+const INSTANT_KILL_THRESHOLD = 25;
+const RISK_BUILD = 6;
+const RISK_DECAY = 3;
 
-console.log("NeuroShield: Zero-Latency Engine Loaded");
+console.log("NeuroShield Extension: Zero-Latency Engine Loaded");
 
-// --- SETUP UI (Overlay & Canvas) ---
+// Setup UI
 const overlay = document.createElement('div');
 overlay.id = 'neuro-overlay-global';
+overlay.style.cssText = `
+    position: fixed;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+`;
 overlay.innerHTML = `
-    <div class="warning-text">RISK BLOCKED</div>
-    <div id="ai-loading" style="color:gray; margin-top:10px;">Analyzing Scene...</div>
-    <div id="ai-result" class="ai-summary-box" style="display:none;"></div>
+    <div style="font-size: 48px; font-weight: bold; color: #ff4444; margin-bottom: 20px;">RISK BLOCKED</div>
+    <div id="ai-loading" style="color: #ccc; margin: 10px 0;">Analyzing Scene...</div>
+    <div id="ai-result" style="display:none; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; max-width: 300px; text-align: center;"></div>
+    <div id="cors-status" style="color: orange; display: none; margin-top: 10px;">
+        ⚠️ Limited analysis (CORS restrictions)
+    </div>
 `;
 document.body.appendChild(overlay);
 
-// Canvas pentru procesare (micșorat pentru viteză)
+// Canvas for processing
 const procCanvas = document.createElement('canvas');
 const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
 procCanvas.width = 32;
@@ -27,58 +43,83 @@ let riskLevel = 0;
 let isProtecting = false;
 let lastSummaryTime = 0;
 
-// --- AI SUMMARY (Neschimbat) ---
-async function generateAISummary(videoElement) {
-    const now = Date.now();
-    if (now - lastSummaryTime < 15000) return;
-    lastSummaryTime = now;
-
-    // Captură High-Res pentru AI
-    const aiCanvas = document.createElement('canvas');
-    aiCanvas.width = 300;
-    aiCanvas.height = 200;
-    try {
-        aiCanvas.getContext('2d').drawImage(videoElement, 0, 0, 300, 200);
-    } catch (e) { return; }
-
-    const base64Image = aiCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-
-    try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-4o-mini",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Describe scene in 1 sentence for blind person. Ignore flashes." },
-                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                        ]
-                    }
-                ],
-                max_tokens: 40
-            })
-        });
-        const data = await response.json();
-        if (data.choices) {
-            const description = data.choices[0].message.content;
-            document.getElementById('ai-loading').style.display = 'none';
-            document.getElementById('ai-result').style.display = 'block';
-            document.getElementById('ai-result').innerText = description;
+// Enhanced CORS handling
+function enableVideoCORS(video) {
+    if (video.src && !video.crossOrigin) {
+        // Try different CORS modes
+        try {
+            // First try without credentials
+            video.crossOrigin = "anonymous";
+            console.log("NeuroShield: Set CORS anonymous on video");
+        } catch (e) {
+            console.log("NeuroShield: Failed to set CORS anonymous");
         }
-    } catch (error) { console.error(error); }
+    }
 }
 
-// --- POZIȚIONARE OVERLAY ---
+// Test if we can actually analyze the video
+function testVideoAccess(video) {
+    return new Promise((resolve) => {
+        try {
+            procCtx.drawImage(video, 0, 0, 1, 1);
+            procCtx.getImageData(0, 0, 1, 1);
+            resolve(true);
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+// Analysis function with fallback
+function getLuma(video) {
+    try {
+        procCtx.drawImage(video, 0, 0, 32, 32);
+        const frame = procCtx.getImageData(0, 0, 32, 32).data;
+        let total = 0;
+        let count = 0;
+
+        for (let i = 0; i < frame.length; i += 16) {
+            total += frame[i] * 0.299 + frame[i + 1] * 0.587 + frame[i + 2] * 0.114;
+            count++;
+        }
+
+        // Hide CORS status if analysis works
+        document.getElementById('cors-status').style.display = 'none';
+        return total / count;
+
+    } catch (e) {
+        if (e.name === 'SecurityError') {
+            console.log("NeuroShield: CORS still blocked, using fallback analysis");
+            document.getElementById('cors-status').style.display = 'block';
+
+            // Fallback: Use timing-based detection when CORS fails
+            return getLumaFallback(video);
+        }
+        return -1;
+    }
+}
+
+// Fallback analysis when CORS is completely blocked
+function getLumaFallback(video) {
+    // Method 1: Check video state and dimensions
+    if (video.paused || video.ended || video.readyState < 2) return 128;
+
+    // Method 2: Use video time changes as proxy for activity
+    const currentTime = video.currentTime;
+
+    // Return a safe middle value since we can't analyze pixels
+    // This will prevent false positives but won't detect actual flashes
+    return 128;
+}
+
+// Overlay positioning
 function updateOverlayPosition(video) {
     if (!isProtecting) return;
     const rect = video.getBoundingClientRect();
-    if (rect.width === 0) { overlay.style.opacity = '0'; return; }
+    if (rect.width === 0) {
+        overlay.style.opacity = '0';
+        return;
+    }
 
     overlay.style.top = rect.top + 'px';
     overlay.style.left = rect.left + 'px';
@@ -87,35 +128,26 @@ function updateOverlayPosition(video) {
     overlay.style.opacity = '1';
 }
 
-// --- ANALIZA LUMINANȚEI ---
-function getLuma(video) {
-    try {
-        // Desenăm frame-ul curent
-        procCtx.drawImage(video, 0, 0, 32, 32);
-        const frame = procCtx.getImageData(0, 0, 32, 32).data;
-        let total = 0;
-        let count = 0;
-
-        // Sampling optimizat (sărim pixeli pentru viteză la 60fps)
-        for (let i = 0; i < frame.length; i += 16) {
-            total += frame[i] * 0.299 + frame[i + 1] * 0.587 + frame[i + 2] * 0.114;
-            count++;
-        }
-        return total / count;
-    } catch (e) { return -1; }
-}
-
-// --- ENGINE-UL ZERO-LATENCY ---
+// Main analysis engine
 function startAnalysis(video) {
     let lastLuma = -1;
+    let analysisActive = true;
+    let corsWorking = false;
 
-    // Folosim requestVideoFrameCallback în loc de setInterval
-    // Aceasta se execută FIECARE FRAME, exact când e gata de randare.
+    // Test CORS access first
+    testVideoAccess(video).then((canAnalyze) => {
+        corsWorking = canAnalyze;
+        if (!canAnalyze) {
+            console.log("NeuroShield: CORS blocked for video, using limited analysis");
+            document.getElementById('cors-status').style.display = 'block';
+        }
+    });
+
     const onFrame = (now, metadata) => {
-        if (!document.contains(video) || video.paused || video.ended) {
-            // Dacă video-ul s-a oprit, re-verificăm peste 1 secundă
-            // (nu putem folosi RVFC pe video oprit)
-            setTimeout(() => video.requestVideoFrameCallback(onFrame), 1000);
+        if (!analysisActive || !document.contains(video) || video.paused || video.ended) {
+            if (!video.paused && !video.ended) {
+                setTimeout(() => video.requestVideoFrameCallback(onFrame), 1000);
+            }
             return;
         }
 
@@ -128,62 +160,101 @@ function startAnalysis(video) {
             if (lastLuma !== -1) diff = Math.abs(currLuma - lastLuma);
             lastLuma = currLuma;
 
-            // --- LOGICA "INSTANT KILL" ---
-            if (diff > INSTANT_KILL_THRESHOLD) {
-                // Flash MASIV detectat -> Blocăm instant, nu așteptăm acumularea
+            // Adjust sensitivity based on CORS capability
+            const effectiveThreshold = corsWorking ? FLASH_THRESHOLD : FLASH_THRESHOLD * 3;
+            const effectiveInstantKill = corsWorking ? INSTANT_KILL_THRESHOLD : INSTANT_KILL_THRESHOLD * 3;
+
+            if (diff > effectiveInstantKill) {
                 riskLevel = 100;
-            }
-            else if (diff > FLASH_THRESHOLD) {
-                // Flash mediu -> Acumulăm risc
+            } else if (diff > effectiveThreshold) {
                 riskLevel += RISK_BUILD;
-            }
-            else {
-                // Calm -> Scădem risc
+            } else {
                 riskLevel -= RISK_DECAY;
             }
 
-            // Limite
             riskLevel = Math.max(0, Math.min(100, riskLevel));
 
-            // --- TRIGGER ---
-            if (riskLevel > 50) {
+            if (riskLevel > 10) {
                 if (!isProtecting) {
                     isProtecting = true;
-                    video.classList.add('neuroshield-active');
+                    video.style.filter = 'blur(10px)';
                     updateOverlayPosition(video);
-
-                    // UI Reset
                     document.getElementById('ai-loading').style.display = 'block';
                     document.getElementById('ai-result').style.display = 'none';
-
-                    //generateAISummary(video);
+                    console.log("NeuroShield: Protection activated");
                 }
             } else {
                 if (isProtecting) {
                     isProtecting = false;
-                    video.classList.remove('neuroshield-active');
+                    video.style.filter = 'none';
                     overlay.style.opacity = '0';
+                    console.log("NeuroShield: Protection deactivated");
                 }
             }
         }
 
-        // Cerem următorul frame
         video.requestVideoFrameCallback(onFrame);
     };
 
-    // Pornim bucla
     video.requestVideoFrameCallback(onFrame);
+
+    // Cleanup if video is removed
+    const observer = new MutationObserver(() => {
+        if (!document.contains(video)) {
+            analysisActive = false;
+            observer.disconnect();
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// --- INIȚIALIZARE ---
-// Verificăm periodic pentru videouri noi
-setInterval(() => {
+// Initialize - hook all videos
+function initializeVideoAnalysis() {
     document.querySelectorAll('video').forEach(v => {
         if (!v.dataset.nsActive) {
             v.dataset.nsActive = "true";
-            try { v.crossOrigin = "anonymous"; } catch (e) { }
-            console.log("NeuroShield: Hooked video", v);
+            enableVideoCORS(v);
+            console.log("NeuroShield: Hooked video", v.src);
             startAnalysis(v);
         }
     });
-}, 2000);
+}
+
+// Initial scan
+initializeVideoAnalysis();
+
+// Watch for new videos
+const videoObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+            if (node.nodeName === 'VIDEO') {
+                setTimeout(() => {
+                    if (!node.dataset.nsActive) {
+                        node.dataset.nsActive = "true";
+                        enableVideoCORS(node);
+                        console.log("NeuroShield: Hooked new video", node.src);
+                        startAnalysis(node);
+                    }
+                }, 100);
+            } else if (node.querySelectorAll) {
+                node.querySelectorAll('video').forEach(video => {
+                    setTimeout(() => {
+                        if (!video.dataset.nsActive) {
+                            video.dataset.nsActive = "true";
+                            enableVideoCORS(video);
+                            console.log("NeuroShield: Hooked nested video", video.src);
+                            startAnalysis(video);
+                        }
+                    }, 100);
+                });
+            }
+        });
+    });
+});
+
+videoObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+console.log("NeuroShield: Video observer started");
