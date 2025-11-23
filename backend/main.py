@@ -24,24 +24,6 @@ model = AutoModelForImageTextToText.from_pretrained(
     _attn_implementation="flash_attention_2"
 ).to("cuda")
 
-# messages = [
-#     {
-#         "role": "user",
-#         "content": [
-#             {"type": "video", "path": "blocker.mp4"},
-#             {"type": "text", "text": f"Describe this video in detail"}
-#         ]
-#     },
-# ]
-
-# inputs = processor.apply_chat_template(
-# messages,
-# add_generation_prompt=True,
-# tokenize=True,
-# return_dict=True,
-# return_tensors="pt",
-# ).to(model.device, dtype=torch.bfloat16)
-
 # Descrierea default pentru blockere la care nu s-a generat inca o descriere (sau prea scurte)
 DEFAULT_DESCRIPTION = "Hidden part is too short for a description"
 
