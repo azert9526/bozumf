@@ -19,8 +19,8 @@ video.vp-active {
 }
 
 .vp-badge-safe {
-    background-color: #00cc00; /* Verde */
-    border: 1px solid #00ff00;
+    background-color: #7c5aa4; /* Verde */
+    border: 1px solid #967bb6;
 }
 
 .vp-badge-unknown {
@@ -31,7 +31,7 @@ video.vp-active {
 
 
 
-/* Overlay-ul Global care sta peste video */
+/* Overlay-ul global care sta peste video */
 #vp-overlay {
     position: fixed;
     z-index: 2147483647;
@@ -40,18 +40,18 @@ video.vp-active {
     align-items: center;
     justify-content: center;
     /* ultima la background -> opacity la ecranul protective TODO: */
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.95);
     backdrop-filter: blur(5px);
     pointer-events: none;
-    border: 3px solid #00ff88;
+    border: 3px solid #b09cc8;
     border-radius: 8px;
     opacity: 0;
     transition: opacity 0.2s;
 }
 
 .vp-warning {
-    color: #00ff88;
-    font-size: 20px;
+    color: #b09cc8;
+    font-size: 40px;
     font-weight: bold;
     font-family: sans-serif;
     text-transform: uppercase;
@@ -70,5 +70,5 @@ video.vp-active {
     font-size: 14px;
     max-width: 80%;
     text-align: center;
-    border-left: 4px solid #00ff88;
+    border-left: 4px solid #b09cc8;
 }

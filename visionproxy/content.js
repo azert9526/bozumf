@@ -23,7 +23,7 @@ const overlay = document.createElement('div');
 overlay.id = 'vp-overlay';
 overlay.innerHTML = `
     <div class="vp-warning">VisionProxy Active</div>
-    <div id="vp-status" style="color:#ccc; margin-top:10px; font-size:12px;">Initializing...</div>
+    <div id="vp-status" style="color:#ccc; margin-top:12px; font-size:32px; text-align:center; display:block;">Initializing...</div>
 `;
 document.body.appendChild(overlay);
 
@@ -167,7 +167,7 @@ function fadeOverlay(toOpacity, duration = 500) {
 // --- MOD 1: PRECOMPUTED (din DB) ---
 function runPrecomputedMode(video, blockers, activeId) {
     console.log("MODE: Precomputed");
-    document.getElementById('vp-status').innerText = "Hidden part is too short for a description";
+    // document.getElementById('vp-status').innerText = "Hidden part is too short for a description";
     // daca are in Db description, inlocuim
 
     const loop = () => {
@@ -187,6 +187,9 @@ function runPrecomputedMode(video, blockers, activeId) {
             const end = b.end_time_ms || b.endTime;
             if (now >= start && now <= end) {
                 shouldBlock = true;
+
+                document.getElementById('vp-status').innerText = b.description || "Hidden part is too short for a description";
+
                 break;
             }
         }
@@ -291,7 +294,7 @@ function runRealtimeMode(video, activeId) {
                         recordedBlockers.push({
                             start_time_ms: Math.max(0, currentBlockerStart - 1000),
                             end_time_ms: end + 1000,
-                            description: "Auto-detected flashes"
+                            description: "Hidden part is too short for a description"
                         });
                         
                         hasNewData = true;
@@ -389,3 +392,4 @@ window.addEventListener('popstate', () => {
 });
 
 // https://www.youtube.com/watch?v=nTejB1lAfPA
+// https://www.youtube.com/watch?v=0YsC6M4GFoc

@@ -1,3 +1,5 @@
+// Aici tinem minte starea modului fotosensibilitate si o salvam in storage-ul local
+
 document.addEventListener('DOMContentLoaded', () => {
     const modeSwitch = document.getElementById('photosensitiveMode');
 

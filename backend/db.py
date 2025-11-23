@@ -2,6 +2,7 @@ import asyncpg
 
 pool = None
 
+# Tinem o conexiune globala la baza de date
 async def get_pool():
     global pool
     if pool is None:

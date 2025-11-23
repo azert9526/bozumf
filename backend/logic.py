@@ -1,15 +1,16 @@
 from db import get_pool
 
-# Funcție care extrage platforma si id-ul video din URL
+# Functie care extrage platforma si id-ul video din URL
 async def process_video_url(url: str):
-    # In Node se verifica doar youtube
+    # Momentan doar Youtube
     if "youtube" in url and "v=" in url:
         video_id = url.split("v=")[1].split("&")[0]
         return {"platform": "youtube", "video_id": video_id}
-    raise ValueError("Platforma neacceptata")
+    
+    raise ValueError("Platform not supported")
 
 
-# Verifica daca exista video in baza de date
+# Verifica daca exista un video prin url in baza de date
 async def check_video_exists(url: str):
     params = await process_video_url(url)
     pool = await get_pool()
@@ -64,7 +65,7 @@ async def add_to_database(url: str, blockers):
     params = await process_video_url(url)
     pool = await get_pool()
 
-    # Insert video
+    # Video
     query_video = """
         INSERT INTO Video (platform, video_id)
         VALUES ($1, $2)
@@ -74,7 +75,7 @@ async def add_to_database(url: str, blockers):
     row = await pool.fetchrow(query_video, params["platform"], params["video_id"])
     video_id = row["id"]
 
-    # Insert blockere
+    # Blockere
     query_blocker = """
         INSERT INTO Blocker (video_id, start_time_ms, end_time_ms, description)
         VALUES ($1, $2, $3, $4)
