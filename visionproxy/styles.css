@@ -29,6 +29,22 @@ video.vp-active {
     opacity: 0.8;
 }
 
+.top-ad {
+    position: absolute;
+    top: 25px;
+    left: 50%;
+    transform: translateX(-50%);  /* Adjust for perfect centering */
+    z-index: 1000;       /* Ensure it appears on top */
+    color: #b09cc8;
+    font-size: 20px;
+    font-weight: bold;
+    font-family: sans-serif;
+    text-transform: uppercase;
+    background: #000;
+    padding: 10px 20px;
+    border-radius: 5px;
+    border: 2px solid #b09cc8;
+}
 
 
 /* Overlay-ul global care sta peste video */
@@ -47,6 +63,14 @@ video.vp-active {
     border-radius: 8px;
     opacity: 0;
     transition: opacity 0.2s;
+}
+
+#vp-status {
+    color: #ccc;
+    margin: 12px 100px 6px;
+    font-size: 32px;
+    text-align: center;
+    display: block;
 }
 
 .vp-warning {

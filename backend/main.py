@@ -78,7 +78,7 @@ async def add(request: dict):
         return {"success": False}
     
 # Endpoint pentru generare descrieri pentru blockere
-# Aici se proceseaza fiecare blocker care are descrierea default si o lungime mai mare de 3 secunde
+# Aici se proceseaza fiecare blocker care are descrierea default si o lungime mai mare de 2.5 secunde
 @app.post("/generate-descriptions")
 async def generate_descriptions(request: dict):
     video_id = request["video_id"]
@@ -99,7 +99,7 @@ async def generate_descriptions(request: dict):
         end_time = blocker["end_time_ms"]
         description = blocker["description"]
         timespan = end_time - start_time
-        if 5000 > timespan or description.strip() != DEFAULT_DESCRIPTION:
+        if 4500 > timespan or description.strip() != DEFAULT_DESCRIPTION:
             print(description.strip(), DEFAULT_DESCRIPTION, timespan)
             print(f"Skipping blocker {blocker['id']} because short length")
             continue

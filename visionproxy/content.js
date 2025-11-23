@@ -27,8 +27,9 @@ console.log("VisionProxy: Client Loaded");
 const overlay = document.createElement('div');
 overlay.id = 'vp-overlay';
 overlay.innerHTML = `
+    <div class="top-ad"> THIS IS AN EXAMPLE BANNER AD </div>
     <div class="vp-warning">VisionProxy Active</div>
-    <div id="vp-status" style="color:#ccc; margin-top:12px; font-size:32px; text-align:center; display:block;">Initializing...</div>
+    <div id="vp-status">Initializing...</div>
 `;
 document.body.appendChild(overlay);
 
@@ -250,7 +251,7 @@ function getLuma(video) {
 // --- MOD 2: REALTIME (nu sunt date despre acest video in DB) ---
 function runRealtimeMode(video, activeId) {
     console.log("MODE: Realtime");
-    document.getElementById('vp-status').innerText = "Recording new data";
+    document.getElementById('vp-status').innerText = "Recording new data...";
 
     let lastLuma = -1;
     let risk = 0;
