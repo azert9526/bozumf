@@ -1,6 +1,9 @@
-// --- CONFIGURARE ---
+// --- CONFIG ---
+
+// URL API Backend
 const API_URL = "http://localhost:8000";
 
+// Parametri "sensibilitate"
 const THRESHOLD = 40;
 const LUMA_DIFF_MIN = 5;
 const RISK_BUILD = 15;
@@ -11,7 +14,7 @@ let isPhotosensitiveMode = true;
 let isProtecting = false;
 let currentVideoId = null;
 
-// Stare inregistrare
+// Stare inregistrare (memorie temporara pana la salvare)
 let recordedBlockers = [];
 let currentBlockerStart = null;
 let hasNewData = false;
@@ -19,6 +22,8 @@ let hasNewData = false;
 console.log("VisionProxy: Client Loaded");
 
 // --- UI SETUP ---
+
+// Ecran protector
 const overlay = document.createElement('div');
 overlay.id = 'vp-overlay';
 overlay.innerHTML = `
@@ -27,12 +32,13 @@ overlay.innerHTML = `
 `;
 document.body.appendChild(overlay);
 
+// Canvas pentru procesare video, practic punem un video frame in canvas si citim pixelii
 const procCanvas = document.createElement('canvas');
 const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
 procCanvas.width = 32;
 procCanvas.height = 32;
 
-// --- SYNC SETARI ---
+// --- SETARI ---
 chrome.storage.local.get({ isPhotosensitiveMode: true }, (items) => {
     isPhotosensitiveMode = items.isPhotosensitiveMode;
     if (!isPhotosensitiveMode) cleanupVisuals();
@@ -45,7 +51,8 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-// --- API CALLS DE LA SERVER ---
+// --- COMUNICARE CU SERVER ---
+// Verifica daca video-ul exista in baza de date
 async function checkDB(videoId) {
     try {
         const res = await fetch(`${API_URL}/check?id=${videoId}`);
@@ -55,6 +62,7 @@ async function checkDB(videoId) {
     }
 }
 
+// Salveaza datele despre video in baza de date
 async function saveToDB() {
     if (!hasNewData || !currentVideoId || recordedBlockers.length === 0) return;
 
@@ -74,7 +82,7 @@ async function saveToDB() {
         });
 
         if (!addResponse.ok) {
-            console.error("Save failed: server said ", addResponse.status);
+            console.error("Save failed: ", addResponse.status);
             return;
         }
 
@@ -86,18 +94,20 @@ async function saveToDB() {
                 platform: 'youtube'
             }),
             keepalive: true
-        }).catch(err => console.error("Warning generating descriptions:", err));
+        }).catch(err => console.error("Error generating descriptions:", err));
 
         hasNewData = false;
         recordedBlockers = [];
 
-        console.log("Data saved successfully");
+        console.log("Video data saved");
     } catch (e) {
         console.error("Save failed:", e);
     }
 }
 
-// --- THUMBNAIL BADGES ---
+// --- THUMBNAIL ICONS ---
+
+// Proceseaza un thumbnail individual
 async function processThumbnail(thumbnail) {
     const link = thumbnail.querySelector('a#thumbnail');
     if (!link) return;
@@ -118,6 +128,7 @@ async function processThumbnail(thumbnail) {
     addBadgeToThumbnail(thumbnail, data.found ? "safe" : "unsafe");
 }
 
+// Adauga un badge pe thumbnail
 function addBadgeToThumbnail(el, status) {
     const old = el.querySelector('.vp-badge');
     if (old) old.remove();
@@ -138,6 +149,7 @@ function addBadgeToThumbnail(el, status) {
     el.appendChild(badge);
 }
 
+// Scaneaza toate thumbnail-urile de pe pagina
 function scanThumbnails() {
     document.querySelectorAll('ytd-thumbnail').forEach(t => {
         if (!t.dataset.vpChecked) processThumbnail(t);
@@ -145,11 +157,14 @@ function scanThumbnails() {
 }
 
 // --- HELPER VIZUALE ---
+
+// Practic scoate ecranul protector
 function cleanupVisuals() {
-    fadeOverlay(0, 100);
+    fadeOverlay(0);
     document.querySelectorAll('video').forEach(v => v.classList.remove('vp-active'));
 }
 
+// Actualizeaza pozitia ecranului protector
 function updateOverlayPos(video) {
     const r = video.getBoundingClientRect();
     if (r.width === 0) return;
@@ -159,7 +174,8 @@ function updateOverlayPos(video) {
     overlay.style.height = r.height + 'px';
 }
 
-function fadeOverlay(toOpacity, duration = 500) {
+// Efect de fade pentru ecranul protector
+function fadeOverlay(toOpacity, duration = 900) {
     overlay.style.transition = `opacity ${duration}ms ease`;
     overlay.style.opacity = toOpacity;
 }
@@ -167,11 +183,10 @@ function fadeOverlay(toOpacity, duration = 500) {
 // --- MOD 1: PRECOMPUTED (din DB) ---
 function runPrecomputedMode(video, blockers, activeId) {
     console.log("MODE: Precomputed");
-    // document.getElementById('vp-status').innerText = "Hidden part is too short for a description";
     // daca are in Db description, inlocuim
 
     const loop = () => {
-        // VERIFICARE CRITICA: Daca s-a schimbat video-ul, oprim bucla veche
+        // Daca s-a schimbat video-ul, oprim bucla veche
         if (currentVideoId !== activeId) return;
 
         if (video.paused || video.ended) {
@@ -198,7 +213,7 @@ function runPrecomputedMode(video, blockers, activeId) {
             if (!isProtecting && isPhotosensitiveMode) {
                 isProtecting = true;
                 video.classList.add('vp-active');
-                fadeOverlay(1, 900);
+                fadeOverlay(1);
                 updateOverlayPos(video);
             } else if (isProtecting) {
                 updateOverlayPos(video);
@@ -207,16 +222,17 @@ function runPrecomputedMode(video, blockers, activeId) {
             if (isProtecting) {
                 isProtecting = false;
                 video.classList.remove('vp-active');
-                fadeOverlay(0, 900);
+                fadeOverlay(0);
             }
         }
+        // Repetam la urmatorul frame
         requestAnimationFrame(loop);
     };
 
     requestAnimationFrame(loop);
 }
 
-// --- MOD 2: REALTIME ---
+// Calculeaza luminozitatea medie a unui frame video (luma e calculata dupa ochiul uman si e 0.299*R + 0.587*G + 0.114*B)
 function getLuma(video) {
     try {
         ctx.drawImage(video, 0, 0, 32, 32);
@@ -231,6 +247,7 @@ function getLuma(video) {
     }
 }
 
+// --- MOD 2: REALTIME (nu sunt date despre acest video in DB) ---
 function runRealtimeMode(video, activeId) {
     console.log("MODE: Realtime");
     document.getElementById('vp-status').innerText = "Recording new data";
@@ -276,7 +293,7 @@ function runRealtimeMode(video, activeId) {
                         fadeOverlay(1, 0);
                         updateOverlayPos(video);
                     }
-                    // Start recording
+                    // Start inregistrare blocker
                     currentBlockerStart = Math.max(0, Math.floor(video.currentTime * 1000) - 200);
                 }
             } else {
@@ -285,10 +302,10 @@ function runRealtimeMode(video, activeId) {
 
                     if (isPhotosensitiveMode) {
                         video.classList.remove('vp-active');
-                        fadeOverlay(0, 0);
+                        fadeOverlay(0);
                     }
 
-                    // Stop recording & save
+                    // Stop inregistrare blocker si punem in lista ca sa se salveze ulterior
                     if (currentBlockerStart !== null) {
                         const end = Math.floor(video.currentTime * 1000);
                         recordedBlockers.push({
@@ -317,12 +334,14 @@ function runRealtimeMode(video, activeId) {
 
 // --- CONTROLLER & NAVIGARE ---
 
+// Util uneori pentru a citi pixelii video-ului (CORS uneori blocheaza asta)
 function enableVideoCORS(video) {
     if (!video.crossOrigin) {
         try { video.crossOrigin = "use-credentials"; } catch {}
     }
 }
 
+// Ruleaza cand intram pe un video nou
 async function handleVideoChange(video) {
     const urlParams = new URLSearchParams(window.location.search);
     const newId = urlParams.get('v');
@@ -335,14 +354,12 @@ async function handleVideoChange(video) {
 
     console.log(`Video Changed: ${currentVideoId} -> ${newId}`);
 
-    // 1. Salvam datele vechi inainte sa schimbam
+    // Salvam datele vechi inainte sa schimbam, actualizam ID-ul curent, verificam baza de date pentru noul video
     if (currentVideoId && hasNewData) await saveToDB();
 
-    // 2. Actualizam ID-ul curent
     currentVideoId = newId;
     cleanupVisuals();
 
-    // 3. Verificam baza de date pentru noul video
     const db = await checkDB(newId);
 
     if (db.found && db.blockers && db.blockers.length > 0) {
@@ -355,17 +372,17 @@ async function handleVideoChange(video) {
 // --- LOOP PRINCIPAL ---
 // Folosim un interval pentru a verifica constant navigarea
 setInterval(() => {
-    // Scaneaza Thumbnails
+    // Scaneaza thumbnail-urile de pe pagina
     scanThumbnails();
 
-    // Scaneaza Video Player
+    // Scaneaza Video Player daca exista
     document.querySelectorAll('video').forEach(v => {
         enableVideoCORS(v);
         handleVideoChange(v);
     });
 }, 250);
 
-// --- OBSERVER (Doar pentru DOM Updates) ---
+// Observer care detecteaza cand YouTube incarca elemente noi (scroll infinit)
 const observer = new MutationObserver((mutations) => {
     let shouldScan = false;
     for (const m of mutations) {
@@ -379,6 +396,8 @@ const observer = new MutationObserver((mutations) => {
     }
 });
 observer.observe(document.body, { childList: true, subtree: true });
+
+// Clean up la iesire
 
 // Salvare la inchidere tab
 window.addEventListener('beforeunload', () => {
